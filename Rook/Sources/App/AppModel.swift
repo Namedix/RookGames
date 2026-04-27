@@ -1,53 +1,46 @@
-import CasePaths
 import Dependencies
 import SwiftUI
 
 @MainActor
 @Observable
 final class AppModel {
-    var path: [Path] {
-        didSet { bind() }
+    enum Tab: Hashable, CaseIterable {
+        case collection
+        case plays
+        case social
+        case profile
     }
-    var countersList: CountersListModel {
-        didSet { bind() }
-    }
+
+    var selectedTab: Tab = .collection
+
+    var collection: CollectionTabModel { didSet { bind() } }
+    var plays: PlaysTabModel           { didSet { bind() } }
+    var social: SocialTabModel         { didSet { bind() } }
+    var profile: ProfileTabModel       { didSet { bind() } }
 
     @ObservationIgnored @Dependency(\.continuousClock) var clock
     @ObservationIgnored @Dependency(\.date.now) var now
     @ObservationIgnored @Dependency(\.uuid) var uuid
 
-    @CasePathable
-    @dynamicMemberLookup
-    enum Path: Hashable {
-        case detail(CounterDetailModel)
-    }
-
     init(
-        path: [Path] = [],
-        countersList: CountersListModel = CountersListModel()
+        selectedTab: Tab = .collection,
+        collection: CollectionTabModel = CollectionTabModel(),
+        plays: PlaysTabModel = PlaysTabModel(),
+        social: SocialTabModel = SocialTabModel(),
+        profile: ProfileTabModel = ProfileTabModel()
     ) {
-        self.path = path
-        self.countersList = countersList
+        self.selectedTab = selectedTab
+        self.collection = collection
+        self.plays = plays
+        self.social = social
+        self.profile = profile
         self.bind()
     }
 
-    /// Wire parent-owned navigation effects onto child models that exist in the
-    /// path. Following SyncUps' pattern, child models expose closure hooks
-    /// (e.g. `onCounterDeleted`) that the parent fills in here.
+    /// Cross-tab effects. Keeps tabs decoupled at construction time but lets
+    /// the parent reach into them when one tab's actions affect another.
     private func bind() {
-        for destination in path {
-            switch destination {
-            case let .detail(detailModel):
-                bindDetail(model: detailModel)
-            }
-        }
-    }
-
-    private func bindDetail(model: CounterDetailModel) {
-        model.onCounterDeleted = { [weak self] id in
-            guard let self else { return }
-            countersList.deleteCounter(id: id)
-            _ = path.popLast()
-        }
+        // Future: wire e.g. collection.list.onLogPlayTapped to switch tabs and
+        // pre-fill the play form. No cross-tab hooks are active yet.
     }
 }

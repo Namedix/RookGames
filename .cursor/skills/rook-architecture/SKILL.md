@@ -247,6 +247,74 @@ When adding a new screen `Foo`:
    (`navigationDestination` switch).
 6. **Stop.** Do not write tests. Do not add CI test steps.
 
+## Design system
+
+Rook ships a small, opinionated design system under
+`Rook/Sources/DesignSystem/`. It is dark-only and built on top of Tuist's
+resource synthesizer (the auto-generated `RookAsset` namespace at
+`Derived/Sources/TuistAssets+Rook.swift`). Always go through these tokens —
+never hardcode hex, font sizes, padding numbers or radii in feature code.
+
+### Tokens
+
+- **Color** — `Color.rook*` (and `UIColor.rook*`). Wrap-only over
+  `RookAsset.<name>.swiftUIColor`. Available roles:
+  `rookBackground`, `rookSurface`, `rookSurfaceElevated`, `rookSeparator`,
+  `rookForeground`, `rookForegroundSecondary`, `rookForegroundTertiary`,
+  `rookAccent`, `rookHighlight`, `rookGradientStart`, `rookGradientEnd`.
+- **Gradient** — `LinearGradient.rookBrand` (coral → pink). Use for primary
+  CTAs, the wordmark, and hero stats. Do not redefine locally.
+- **Typography** — `RookFont` enum + `.rookFont(_:)` view modifier. Cases:
+  `largeTitle`, `title`, `title2`, `headline`, `body`, `callout`,
+  `subheadline`, `footnote`, `caption`, `mono`. Currently resolves to
+  `Font.system(_:design: .rounded)` (the SF Pro Rounded family). When a
+  custom face (e.g. Silka) is licensed, swap the resolver in
+  `RookFont.font` only — call sites do not change.
+- **Spacing / radius** — `RookSpacing.{xs,s,m,l,xl,xxl}` and
+  `RookRadius.{s,m,l,xl}`.
+
+### Components
+
+- `Button(...).buttonStyle(.rookPrimary)` — gradient pill.
+- `Button(...).buttonStyle(.rookSecondary)` — bordered accent pill.
+- `someView.rookCard()` — surface + corner + padding.
+- `RookWordmark(size:)` — gradient-filled "rook" wordmark, swap to
+  `Image("Brand/RookWordmark")` once the SVG ships.
+
+### Bootstrap
+
+`RookApp.init` calls `RookTheme.bootstrap()`, which:
+- Configures `UINavigationBar` appearance proxies (background, tint, title).
+- Clears `UITableView` / `UICollectionView` backgrounds so SwiftUI
+  `Color.rookBackground` shows through.
+
+`AppView` applies `.preferredColorScheme(.dark)` and `.tint(.rookAccent)`.
+Per-screen, set `Color.rookBackground.ignoresSafeArea()` as the root
+background and pair lists/scrolls with `.scrollContentBackground(.hidden)`.
+
+### Adding new tokens
+
+- **New color** → drop a `.colorset` under
+  `Rook/Resources/Assets.xcassets/Colors/`, run `tuist generate` (refreshes
+  `RookAsset`), then expose as `static var rookFoo: Color { RookAsset.rookFoo.swiftUIColor }`
+  in `RookColor.swift`.
+- **New typography role** → add a case to `RookFont` and its size/weight in
+  `RookFont.role`. Don't reach for custom fonts unless the design system is
+  formally upgraded to a licensed face.
+- **Switching to a licensed face** (e.g. Silka): create
+  `Rook/Resources/Fonts/`, drop the `.otf/.ttf` files in, add filenames to
+  `UIAppFonts` in `Project.swift`, and update only `RookFont.font` to prefer
+  `Font.custom(...)` with a `Font.system` fallback. No call site touches.
+- **New role/component** → put it in `Rook/Sources/DesignSystem/Components/`
+  and prefix with `Rook` for grep-ability.
+
+### Dark-only rules
+
+- Do not add light-mode color variants to any `.colorset`.
+- Do not call `.preferredColorScheme(.light)` anywhere.
+- `UIUserInterfaceStyle = Dark` is set in the app's Info plist; do not remove
+  it.
+
 ## Anti-patterns (never do these)
 
 - ❌ `class FooViewModel: ObservableObject { @Published … }` — use `@Observable`.
@@ -260,3 +328,11 @@ When adding a new screen `Foo`:
 - ❌ Adding a tests target, `XCTest` import, `@Test`, or `XCTestCase`.
 - ❌ Adding new top-level SPM dependencies via Xcode UI — use
   `Tuist/Package.swift`.
+- ❌ Hardcoded `Color(red:green:blue:)`, `Color("Foo")`, `.font(.system(size: 17))`,
+  `.padding(16)`, `.cornerRadius(20)` in feature code — go through
+  `Color.rook*`, `.rookFont(_:)`, `RookSpacing.*`, `RookRadius.*`.
+- ❌ Adding `.preferredColorScheme(.light)` or light-mode color variants — the
+  app is dark-only.
+- ❌ Hand-writing `Color("RookBackground", bundle: .main)` — wrap
+  `RookAsset.rookBackground.swiftUIColor` instead, so renames in the asset
+  catalog propagate via Tuist's resource synthesizer.

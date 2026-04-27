@@ -11,7 +11,13 @@ let appInfoPlist: [String: Plist.Value] = [
     "CFBundleDisplayName": "Rook",
     "CFBundleShortVersionString": "1.0.0",
     "CFBundleVersion": "1",
-    "UILaunchScreen": [:],
+    "UIUserInterfaceStyle": "Dark",
+    "RookBackendURL": "https://rook-backend.vercel.app",
+    "NSCameraUsageDescription": "Rook uses the camera to scan board game barcodes so you can add games to your library.",
+    "NSPhotoLibraryUsageDescription": "Rook uses your photos so you can pick a picture of your shelf and import the games it sees.",
+    "UILaunchScreen": [
+        "UIColorName": "RookBackground",
+    ],
     "UIApplicationSceneManifest": [
         "UIApplicationSupportsMultipleScenes": false,
     ],
