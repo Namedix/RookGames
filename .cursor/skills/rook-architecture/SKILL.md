@@ -28,6 +28,11 @@ consult that repo for an analogous pattern.
    generate`.
 5. **Swift 6 mode, MainActor for models.** Every `@Observable` feature model is
    `@MainActor final class`. Domain types are `Sendable` `struct`s.
+6. **`Identifiable` / `Hashable` / `Equatable` on screen models go in a
+   `nonisolated` extension** — never on the main declaration. Otherwise Swift 6
+   strict concurrency rejects the conformance with *"crosses into main
+   actor-isolated code and can cause data races"*. See the canonical pattern
+   below.
 
 ## Architecture (Point-Free "modern SwiftUI", per SyncUps)
 
@@ -134,6 +139,51 @@ where Self == FileStorageKey<IdentifiedArrayOf<Counter>>.Default {
 
 Mutate through `$counters.withLock { … }`. Read shared collections in views
 with `Array(model.$counters)` to get `Binding`s per element.
+
+### `Identifiable` / `Hashable` on `@MainActor` models
+
+Every screen model that goes into a `Path` enum (drill-down) or a `sheet(item:)`
+binding must conform to `Identifiable` and `Hashable` **via a `nonisolated`
+extension that uses `ObjectIdentifier`** — not via main-actor-isolated members.
+
+```swift
+@MainActor
+@Observable
+final class CounterDetailModel { … }
+
+extension CounterDetailModel: Identifiable, Hashable {
+    nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
+
+    nonisolated static func == (lhs: CounterDetailModel, rhs: CounterDetailModel) -> Bool {
+        lhs === rhs
+    }
+
+    nonisolated func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(self))
+    }
+}
+```
+
+Do **not** write `var id: SomeType { someShared.id }` on the class — accessing
+`@Shared` or any other isolated state from the `id` getter forces the whole
+`Identifiable` conformance to be main-actor-isolated, which Swift 6 rejects.
+
+### Pushing onto the navigation stack
+
+Use `NavigationLink(value:)` directly with the `Path` enum case, mirroring
+SyncUps. Construct the child model inline; the parent's `bind()` will pick it
+up via `path`'s `didSet` and wire any closure hooks:
+
+```swift
+ForEach(Array(model.$counters)) { $counter in
+    NavigationLink(value: AppModel.Path.detail(CounterDetailModel(counter: $counter))) {
+        CounterRow(counter: counter)
+    }
+}
+```
+
+Do not introduce parent-owned `onChildTapped` closures for *navigation*. Only
+use closure hooks for **effects after navigation**, such as `onCounterDeleted`.
 
 ### Type-safe IDs and identified collections
 

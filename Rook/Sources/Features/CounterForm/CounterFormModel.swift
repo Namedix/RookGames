@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 @Observable
-final class CounterFormModel: Identifiable {
+final class CounterFormModel {
     var counter: Counter
     var focus: Field?
 
@@ -20,7 +20,9 @@ final class CounterFormModel: Identifiable {
     }
 }
 
-extension CounterFormModel: Hashable {
+extension CounterFormModel: Identifiable, Hashable {
+    nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
+
     nonisolated static func == (lhs: CounterFormModel, rhs: CounterFormModel) -> Bool {
         lhs === rhs
     }

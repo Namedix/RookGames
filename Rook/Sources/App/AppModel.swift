@@ -31,28 +31,23 @@ final class AppModel {
         self.bind()
     }
 
-    /// Wires child models to parent-owned navigation effects.
-    /// Following SyncUps' pattern, child models expose closure hooks
-    /// (e.g. `onConfirmDeletion`) that the parent fills in here.
+    /// Wire parent-owned navigation effects onto child models that exist in the
+    /// path. Following SyncUps' pattern, child models expose closure hooks
+    /// (e.g. `onCounterDeleted`) that the parent fills in here.
     private func bind() {
-        countersList.onCounterTapped = { [weak self] counter in
-            guard let self else { return }
-            withDependencies(from: self) {
-                let detail = CounterDetailModel(counter: counter)
-                detail.onCounterDeleted = { [weak self] id in
-                    guard let self else { return }
-                    countersList.deleteCounter(id: id)
-                    _ = path.popLast()
-                }
-                path.append(.detail(detail))
-            }
-        }
-
         for destination in path {
             switch destination {
-            case .detail:
-                break
+            case let .detail(detailModel):
+                bindDetail(model: detailModel)
             }
+        }
+    }
+
+    private func bindDetail(model: CounterDetailModel) {
+        model.onCounterDeleted = { [weak self] id in
+            guard let self else { return }
+            countersList.deleteCounter(id: id)
+            _ = path.popLast()
         }
     }
 }

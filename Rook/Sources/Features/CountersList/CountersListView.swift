@@ -16,12 +16,11 @@ struct CountersListView: View {
                 }
             } else {
                 ForEach(Array(model.$counters)) { $counter in
-                    Button {
-                        model.onCounterTapped($counter)
-                    } label: {
+                    NavigationLink(
+                        value: AppModel.Path.detail(CounterDetailModel(counter: $counter))
+                    ) {
                         CounterRow(counter: counter)
                     }
-                    .buttonStyle(.plain)
                 }
                 .onDelete { offsets in
                     model.deleteCounters(at: offsets)
@@ -76,7 +75,6 @@ private struct CounterRow: View {
                 .foregroundStyle(.tint)
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
     }
 }
 

@@ -12,10 +12,6 @@ final class CountersListModel {
 
     @ObservationIgnored @Dependency(\.uuid) var uuid
 
-    /// Parent-owned hook. The `AppModel` fills this in to push a detail screen
-    /// onto the navigation stack — keeping navigation state-driven.
-    var onCounterTapped: (Shared<Counter>) -> Void = { _ in }
-
     init(addCounter: CounterFormModel? = nil) {
         self.addCounter = addCounter
     }

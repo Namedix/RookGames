@@ -6,7 +6,7 @@ import SwiftUINavigation
 
 @MainActor
 @Observable
-final class CounterDetailModel: Identifiable {
+final class CounterDetailModel {
     var destination: Destination?
 
     @ObservationIgnored @Shared var counter: Counter
@@ -35,8 +35,6 @@ final class CounterDetailModel: Identifiable {
         self.destination = destination
         self._counter = counter
     }
-
-    var id: Counter.ID { counter.id }
 
     func incrementButtonTapped() {
         $counter.withLock { $0.value += 1 }
@@ -81,7 +79,9 @@ final class CounterDetailModel: Identifiable {
     }
 }
 
-extension CounterDetailModel: Hashable {
+extension CounterDetailModel: Identifiable, Hashable {
+    nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
+
     nonisolated static func == (lhs: CounterDetailModel, rhs: CounterDetailModel) -> Bool {
         lhs === rhs
     }
