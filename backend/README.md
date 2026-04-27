@@ -41,18 +41,37 @@ requests too.
 
 ## Vercel project setup
 
+The backend has **two cache layers** and only the first is required:
+
+1. **Vercel CDN edge cache** — driven by the `Cache-Control` headers
+   each route sets (`s-maxage=2592000` for `/api/games/:id`,
+   `s-maxage=604800` for `/api/search`). Free, no setup, kicks in
+   automatically as soon as you deploy. Hot URLs are served from the
+   edge in ~30–80 ms without ever invoking the function.
+2. **Upstash Redis (optional)** — a per-id durable cache so that
+   *search-time fan-out hydration* and arbitrary-URL repeat lookups
+   don't re-hit BGG. The route handlers fall back to pass-through mode
+   if the env vars aren't set, so this is purely an optimisation.
+
+### Minimum (CDN-only)
+
 1. Create a new Vercel project pointing at this repo.
 2. **Set the project root to `backend`** (Settings → General → Root
    Directory). Vercel deploys only this folder; the rest of the repo
    (the iOS Tuist project) is ignored.
-3. From Storage → Marketplace, install **Upstash for Redis** into the
-   project. The integration provisions `KV_REST_API_URL` and
-   `KV_REST_API_TOKEN` env vars across Preview and Production
-   automatically.
-4. Add `BGG_BASE_URL=https://boardgamegeek.com/xmlapi2` as a plain env
-   var (Preview + Production).
-5. Deploy. The first request to a given BGG id goes through to BGG;
-   every subsequent request comes from Redis or the CDN.
+3. Optionally add `BGG_BASE_URL=https://boardgamegeek.com/xmlapi2` as
+   an env var (defaults to that value in code).
+4. Deploy. Done. `/api/health`, `/api/games/:id`, and `/api/search`
+   all work; the first request for a given URL warms the CDN.
+
+### Adding Upstash Redis later (free tier)
+
+When you want the second cache layer, from the project's Storage tab:
+**Create Database → Marketplace → Upstash for Redis → Free plan**. The
+integration auto-provisions `KV_REST_API_URL` and `KV_REST_API_TOKEN`
+across Preview + Production. Vercel triggers a redeploy and the
+backend transparently starts using Redis on the next request — no code
+change needed.
 
 ## Local development
 

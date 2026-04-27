@@ -13,23 +13,41 @@ export const TTL = {
 } as const;
 
 let redisSingleton: Redis | null = null;
+let warnedAboutMissingConfig = false;
 
-function getRedis(): Redis {
+/**
+ * Returns the Upstash client, or `null` if the integration hasn't
+ * been wired up yet. Callers treat `null` as a permanent cache miss
+ * so the backend stays useful (just slower) while Upstash is being
+ * provisioned.
+ */
+function getRedis(): Redis | null {
   if (redisSingleton) return redisSingleton;
   const url = process.env.KV_REST_API_URL;
   const token = process.env.KV_REST_API_TOKEN;
   if (!url || !token) {
-    throw new Error(
-      "Upstash Redis not configured. Set KV_REST_API_URL and KV_REST_API_TOKEN."
-    );
+    if (!warnedAboutMissingConfig) {
+      warnedAboutMissingConfig = true;
+      console.warn(
+        "[cache] Upstash not configured (KV_REST_API_URL / KV_REST_API_TOKEN missing). Running in pass-through mode — every request hits BGG."
+      );
+    }
+    return null;
   }
   redisSingleton = new Redis({ url, token });
   return redisSingleton;
 }
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
-  const value = await getRedis().get<T>(key);
-  return value ?? null;
+  const redis = getRedis();
+  if (!redis) return null;
+  try {
+    const value = await redis.get<T>(key);
+    return value ?? null;
+  } catch (error) {
+    console.warn(`[cache] get(${key}) failed, treating as miss:`, error);
+    return null;
+  }
 }
 
 export async function cacheSet<T>(
@@ -37,7 +55,13 @@ export async function cacheSet<T>(
   value: T,
   ttlSeconds: number
 ): Promise<void> {
-  await getRedis().set(key, value, { ex: ttlSeconds });
+  const redis = getRedis();
+  if (!redis) return;
+  try {
+    await redis.set(key, value, { ex: ttlSeconds });
+  } catch (error) {
+    console.warn(`[cache] set(${key}) failed, dropping write:`, error);
+  }
 }
 
 /**
