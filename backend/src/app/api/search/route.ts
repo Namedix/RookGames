@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { cacheGet, cacheKeys, cacheSet, TTL } from "@/lib/cache";
-import { fetchThings, searchIds } from "@/lib/bgg";
+import { fetchThings, isBggLive, searchIds } from "@/lib/bgg";
+import { searchCatalog } from "@/lib/catalog";
 import type { GameDTO } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -14,6 +15,21 @@ const querySchema = z.object({
 
 function normalize(q: string): string {
   return q.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function jsonResults(
+  games: GameDTO[],
+  source: "bgg" | "catalog" | "empty"
+): NextResponse {
+  return NextResponse.json(games, {
+    headers: {
+      "Cache-Control":
+        source === "bgg"
+          ? "public, s-maxage=604800, stale-while-revalidate=86400"
+          : "public, s-maxage=86400, stale-while-revalidate=3600",
+      "X-Rook-Source": source,
+    },
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -29,11 +45,11 @@ export async function GET(request: NextRequest) {
   const limit = params.data.limit;
 
   if (q.length < 2) {
-    return NextResponse.json([] satisfies GameDTO[], {
-      headers: {
-        "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600",
-      },
-    });
+    return jsonResults([], "empty");
+  }
+
+  if (!isBggLive()) {
+    return jsonResults(searchCatalog(q, limit), "catalog");
   }
 
   try {
@@ -49,12 +65,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (ids.length === 0) {
-      return NextResponse.json([] satisfies GameDTO[], {
-        headers: {
-          "Cache-Control":
-            "public, s-maxage=86400, stale-while-revalidate=3600",
-        },
-      });
+      return jsonResults([], "bgg");
     }
 
     const cachedGames = (await Promise.all(
@@ -67,9 +78,7 @@ export async function GET(request: NextRequest) {
     if (missingIds.length > 0) {
       fetched = await fetchThings(missingIds);
       await Promise.all(
-        fetched.map((g) =>
-          cacheSet(cacheKeys.thing(g.id), g, TTL.thing)
-        )
+        fetched.map((g) => cacheSet(cacheKeys.thing(g.id), g, TTL.thing))
       );
     }
 
@@ -78,13 +87,13 @@ export async function GET(request: NextRequest) {
       .map((id, i) => cachedGames[i] ?? fetchedById.get(id) ?? null)
       .filter((g): g is GameDTO => g !== null);
 
-    return NextResponse.json(games, {
-      headers: {
-        "Cache-Control":
-          "public, s-maxage=604800, stale-while-revalidate=86400",
-      },
-    });
+    return jsonResults(games, "bgg");
   } catch (error) {
+    console.warn("[search] BGG failed, falling back to catalog:", error);
+    const fallback = searchCatalog(q, limit);
+    if (fallback.length > 0) {
+      return jsonResults(fallback, "catalog");
+    }
     const message = error instanceof Error ? error.message : "Upstream failure";
     return NextResponse.json({ error: message }, { status: 502 });
   }

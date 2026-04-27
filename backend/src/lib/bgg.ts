@@ -3,6 +3,21 @@ import type { GameDTO } from "./types";
 
 const BASE_URL = process.env.BGG_BASE_URL ?? "https://boardgamegeek.com/xmlapi2";
 const USER_AGENT = "rookgames-backend/1.0 (+https://github.com/rookgames)";
+/**
+ * BGG's XML API has required a registered application and a Bearer
+ * token since 2025-07-02. See https://boardgamegeek.com/using_the_xml_api.
+ * Set `BGG_API_TOKEN` in Vercel once you have an approved application.
+ * Without it the routes fall back to the bundled seed catalog.
+ */
+const BGG_TOKEN = process.env.BGG_API_TOKEN ?? "";
+
+export function isBggLive(): boolean {
+  return BGG_TOKEN.length > 0;
+}
+
+function authHeader(): Record<string, string> {
+  return BGG_TOKEN ? { Authorization: `Bearer ${BGG_TOKEN}` } : {};
+}
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -61,11 +76,23 @@ export class BGGNotFound extends BGGError {
 async function fetchXml(path: string, search: URLSearchParams): Promise<string> {
   const url = `${BASE_URL}${path}?${search.toString()}`;
   const response = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT, Accept: "application/xml" },
+    headers: {
+      "User-Agent": USER_AGENT,
+      Accept: "application/xml",
+      ...authHeader(),
+    },
     cache: "no-store",
   });
   if (response.status === 202) {
     throw new BGGError("BGG queued the request, retry later.", 503);
+  }
+  if (response.status === 401) {
+    throw new BGGError(
+      BGG_TOKEN
+        ? "BGG rejected the API token. Re-check BGG_API_TOKEN."
+        : "BGG requires authentication. Set BGG_API_TOKEN (see https://boardgamegeek.com/applications).",
+      502
+    );
   }
   if (!response.ok) {
     throw new BGGError(`BGG ${path} failed: ${response.status}`, 502);

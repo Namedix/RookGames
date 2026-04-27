@@ -1,16 +1,25 @@
 # Rook Backend
 
-A small Next.js 16 (App Router) service that proxies the
-[BoardGameGeek XML API](https://boardgamegeek.com/wiki/page/BGG_XML_API2)
-and caches each response in Upstash Redis. The Rook iOS app talks to
-this backend instead of hitting BGG directly so we get:
+A small Next.js 16 (App Router) service that serves board-game
+metadata to the Rook iOS app. It has **two data sources** and falls
+through them automatically:
+
+1. **Live BGG XML API** when `BGG_API_TOKEN` is set. Results are
+   cached in Upstash Redis (when configured) and at the Vercel edge.
+2. **Bundled seed catalog** (~50 popular games, real BGG ids, in
+   `src/lib/seedCatalog.ts`) — used while waiting for BGG's
+   application approval, and as a fallback if a live BGG call fails
+   for any reason.
+
+The iOS app talks only to this backend, so it gets:
 
 - a stable JSON shape (`GameDTO`) that decodes 1:1 into the Swift
   `Game` struct,
-- a durable cache that survives deploys (BGG `objectid` data is
-  effectively immutable),
-- a single place to add cross-cutting concerns later (auth, retries,
-  rate-limiting, barcode resolution).
+- a uniform contract regardless of whether data came from BGG or the
+  seed catalog (responses just gain an `X-Rook-Source: bgg|catalog`
+  header for observability),
+- a durable cache layer for live BGG data so we don't repeatedly hit
+  their rate-limited API.
 
 ## Endpoints
 
@@ -53,16 +62,35 @@ The backend has **two cache layers** and only the first is required:
    don't re-hit BGG. The route handlers fall back to pass-through mode
    if the env vars aren't set, so this is purely an optimisation.
 
-### Minimum (CDN-only)
+### Default (no token, seed catalog only)
+
+This is what you get out of the box and what the project ships with
+today:
 
 1. Create a new Vercel project pointing at this repo.
 2. **Set the project root to `backend`** (Settings → General → Root
    Directory). Vercel deploys only this folder; the rest of the repo
    (the iOS Tuist project) is ignored.
-3. Optionally add `BGG_BASE_URL=https://boardgamegeek.com/xmlapi2` as
-   an env var (defaults to that value in code).
-4. Deploy. Done. `/api/health`, `/api/games/:id`, and `/api/search`
-   all work; the first request for a given URL warms the CDN.
+3. Deploy. `/api/health`, `/api/games/:id`, and `/api/search` all
+   work and serve from `src/lib/seedCatalog.ts`. Responses include
+   `X-Rook-Source: catalog`.
+
+### Optional: live BGG data via `BGG_API_TOKEN`
+
+Since 2025-07-02 BGG's XML API requires a registered application and
+a Bearer token. To enable live BGG data:
+
+1. Register a **non-commercial** application at
+   [boardgamegeek.com/applications](https://boardgamegeek.com/applications)
+   (free, ~1 week approval).
+2. Once approved, generate a token under *Tokens*.
+3. Set `BGG_API_TOKEN=<your-token>` in Vercel (Production + Preview).
+4. Optionally set `BGG_BASE_URL=https://boardgamegeek.com/xmlapi2`
+   (this is the default in code).
+
+After redeploy the routes will prefer live BGG and only fall back to
+the seed catalog if a BGG call fails. Live responses include
+`X-Rook-Source: bgg`.
 
 ### Adding Upstash Redis later (free tier)
 
